@@ -1,5 +1,7 @@
-import numpy as np
+# import numpy as np
 from numpy import linalg as LA
+import autograd.numpy as np
+from autograd import jacobian
 
 
 def gamma_fun(h, k, a, b):
@@ -41,6 +43,19 @@ def temperature_function(theta, x, T_amb=21.29, L=70, a=0.95, b=0.95):
     Ts = c1 * np.exp(- gam * x) + c2 * np.exp(gam * x) + T_amb
 
     return Ts
+
+def partials_temperature_function_AD(theta, x):
+    """ Analytic solution of steady-state temperature of an insulated rod """
+
+    partials = jacobian(temperature_function, 0)(theta, x)
+    dTs_dPhi, dTs_dh, dTs_dk = partials[:, 0], partials[:, 1], partials[:, 2]
+
+    # Scaling
+    dTs_dPhi = theta[0] * dTs_dPhi
+    dTs_dh = theta[1] * dTs_dh
+    dTs_dk = theta[2] * dTs_dk
+
+    return dTs_dPhi, dTs_dh, dTs_dk
 
 def partials_temperature_function(theta, x, L=70, a=0.95, b=0.95):
 
@@ -156,11 +171,12 @@ if __name__ == '__main__':
     print('Fisher matrix eigenvalues:', eig_F)
     print('Fisher matrix eigenvectors: \n', evec_F)
 
+
     # ------------------------------------------------------
     #              Pertubation Compared
     # ------------------------------------------------------
     # # Output when perturbing Phi
-    # N_samples = 3
+    N_samples = 3
     # perturbation = 0.1
     # Phi_range = np.linspace(theta_nom_dict['Phi'] * (1 - perturbation), theta_nom_dict['Phi'] * (1 + perturbation), N_samples)
     # h_range = np.linspace(theta_nom_dict['h'] * (1 - perturbation), theta_nom_dict['h'] * (1 + perturbation), N_samples)
@@ -281,44 +297,56 @@ if __name__ == '__main__':
     # ------------------------------------------------------
     #           Sensitivity Methods Comparison
     # ------------------------------------------------------
-    # # Compute sensitivities at multiple points
-    # sens_dict = {'FD': {},
-    #              'CS': {},
-    #              'AN': {}}
-    #
-    # for idx, (key, theta) in enumerate(theta_nom_dict.items()):
-    #     sens_dict['FD'][key] = []
-    #     sens_dict['CS'][key] = []
-    #
-    #     for x in x_vec:
-    #
-    #         # Finite difference
-    #         theta_pert_vec = theta_vec.copy()
-    #         theta_pert_vec[idx] = theta * alpha
-    #         d_theta = theta_pert_vec[idx] - theta_vec[idx]
-    #         sens_dict['FD'][key].append(theta_vec[idx] * ((temperature_function(theta_pert_vec, x) - temperature_function(theta_vec, x)) / d_theta))
-    #
-    #         # Complex step
-    #         theta_pert_im_vec = theta_vec.copy().astype(complex)
-    #         theta_pert_im_vec[idx] = theta_vec[idx] + d_theta * 1j
-    #         sens_dict['CS'][key].append(theta_vec[idx] * np.imag(temperature_function(theta_pert_im_vec, x)) / d_theta)
-    #
-    # # Analytic derivatives
-    # dTs_dPhi, dTs_dh, dTs_dk = partials_temperature_function(theta=theta_vec, x=x_vec)
-    # sens_dict['AN']['Phi'] = dTs_dPhi
-    # sens_dict['AN']['h'] = dTs_dh
-    # sens_dict['AN']['k'] = dTs_dk
-    #
-    #
-    # # Plotting
-    # fig, ax = plt.subplots(1, 3, figsize=(15, 5))
-    # for i, key in enumerate(theta_nom_dict.keys()):
-    #     ax[i].plot(x_vec, sens_dict['FD'][key], label='Finite Difference')
-    #     ax[i].plot(x_vec, sens_dict['CS'][key], label='Complex Step')
-    #     ax[i].plot(x_vec, sens_dict['AN'][key], label='Analytic')
-    #
-    #     ax[i].set_title(f'Sensitivity of {key}')
-    #     ax[i].legend()
-    #
-    # plt.tight_layout()
-    # plt.show()
+    # Compute sensitivities at multiple points
+    sens_dict = {'FD': {},
+                 'CS': {},
+                 'AN': {},
+                 'AD': {}}
+
+    for idx, (key, theta) in enumerate(theta_nom_dict.items()):
+        sens_dict['FD'][key] = []
+        sens_dict['CS'][key] = []
+
+        for x in x_vec:
+
+            # Finite difference
+            theta_pert_vec = theta_vec.copy()
+            theta_pert_vec[idx] = theta * alpha
+            d_theta = theta_pert_vec[idx] - theta_vec[idx]
+            sens_dict['FD'][key].append(theta_vec[idx] * ((temperature_function(theta_pert_vec, x) - temperature_function(theta_vec, x)) / d_theta))
+
+            # Complex step
+            theta_pert_im_vec = theta_vec.copy().astype(complex)
+            theta_pert_im_vec[idx] = theta_vec[idx] + d_theta * 1j
+            sens_dict['CS'][key].append(theta_vec[idx] * np.imag(temperature_function(theta_pert_im_vec, x)) / d_theta)
+
+    # Analytic derivatives
+    dTs_dPhi, dTs_dh, dTs_dk = partials_temperature_function(theta=theta_vec, x=x_vec)
+    sens_dict['AN']['Phi'] = dTs_dPhi
+    sens_dict['AN']['h'] = dTs_dh
+    sens_dict['AN']['k'] = dTs_dk
+
+    # Automatic differentiation derivatives
+    dTs_dPhi_AD, dTs_dh_AD, dTs_dk_AD = partials_temperature_function_AD(theta=theta_vec, x=x_vec)
+    sens_dict['AD']['Phi'] = dTs_dPhi_AD
+    sens_dict['AD']['h'] = dTs_dh_AD
+    sens_dict['AD']['k'] = dTs_dk_AD
+
+
+    # Plotting
+    fig, ax = plt.subplots(1, 3, figsize=(15, 5))
+    for i, key in enumerate(theta_nom_dict.keys()):
+        ax[i].plot(x_vec, sens_dict['FD'][key], label='Finite Difference')
+        ax[i].plot(x_vec, sens_dict['CS'][key], label='Complex Step')
+        ax[i].plot(x_vec, sens_dict['AN'][key], label='Analytic')
+        ax[i].plot(x_vec, sens_dict['AD'][key], label='AD')
+
+        ax[i].set_title(f'Sensitivity of {key}')
+        ax[i].legend()
+
+    plt.tight_layout()
+    plt.show()
+
+
+
+
