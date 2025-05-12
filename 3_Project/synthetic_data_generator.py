@@ -41,7 +41,7 @@ def solve_HIV_ode(params, t_span=(0, 200), t_step=0.5):
 
     # Solve the system
     sol = solve_ivp(odes, t_span, y0, args=(params,), t_eval=t_eval,
-                    method="LSODA", rtol=1e-12, atol=1e-12, dense_output=True)
+                    method="BDF", rtol=1e-12, atol=1e-12, dense_output=True)
     t, y = sol.t, sol.y
 
     return t, y
